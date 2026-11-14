@@ -1,0 +1,2 @@
+const {fulfill}=require('./_core');
+module.exports=async(req,res)=>{if(req.method!=='GET')return res.status(405).end();try{const o=await fulfill(req.query.ref);if(!o)return res.status(404).json({error:'Order not found'});res.json({reference:o.reference,status:o.status,network:o.network,size_gb:o.size_gb,phone:o.phone,price:o.price,order_id:o.order_id});}catch(e){res.status(502).json({error:'Could not retrieve order status'});}};

@@ -1,0 +1,2 @@
+const core=require('../_core');
+module.exports=async(req,res)=>{if(req.method!=='GET')return res.status(405).end();const a=Buffer.from(req.headers['x-admin-key']||''),b=Buffer.from(process.env.ADMIN_PASSWORD||'');if(!b.length||a.length!==b.length||!core.crypto.timingSafeEqual(a,b))return res.status(401).end();try{const remote=await core.dp('/get-orders').catch(()=>({body:{}}));const body=remote.body||{};res.json({local:await core.DB.list(),dataplug:Array.isArray(body)?body:body.packages||body.data||[]});}catch(e){res.status(502).json({error:'Could not load orders'});}};
