@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BundleBay – Instant data bundles</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://js.paystack.co/v2/inline.js"></script>
+<style>
+  body{font-family:Manrope,system-ui,sans-serif;background:#0e1319;color:#e6ebf1}
+  .panel{background:#161d26;border:1px solid #263140;border-radius:14px}
+  .muted{color:#8b98a9}
+  button:focus-visible,input:focus-visible{outline:2px solid #5eead4;outline-offset:2px}
+</style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-[#263140]">
+  <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+    <a href="#" class="text-xl font-extrabold tracking-tight">BundleBay</a>
+    <a href="#admin" class="text-sm muted hover:text-white">Orders</a>
+  </div>
+</header>
+
+<main id="shop" class="max-w-5xl mx-auto px-4 py-8 grid lg:grid-cols-[1fr_340px] gap-6">
+  <section class="space-y-6">
+    <div>
+      <h1 class="text-3xl font-extrabold tracking-tight">Buy data. It lands in seconds.</h1>
+      <p class="muted mt-1">Pick a network, choose a bundle, pay with mobile money or card.</p>
+    </div>
+
+    <div id="tabs" class="grid grid-cols-2 sm:grid-cols-4 gap-2" role="tablist"></div>
+
+    <div class="panel p-4">
+      <h2 class="font-semibold mb-3">Choose a bundle</h2>
+      <div id="pkgs" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+    </div>
+
+    <div class="panel p-4">
+      <label for="phone" class="font-semibold">Recipient number</label>
+      <input id="phone" inputmode="numeric" maxlength="13" placeholder="0241234567"
+        class="mt-2 w-full rounded-lg bg-[#0e1319] border border-[#263140] px-3 py-3 text-lg">
+      <p id="phoneErr" class="text-sm text-red-400 mt-1 hidden">Enter a Ghana number like 0241234567.</p>
+    </div>
+  </section>
+
+  <aside class="space-y-6 lg:sticky lg:top-6 self-start">
+    <div class="panel p-4" id="summary">
+      <h2 class="font-semibold mb-3">Your order</h2>
+      <dl class="text-sm space-y-2">
+        <div class="flex justify-between"><dt class="muted">Network</dt><dd id="sNet">–</dd></div>
+        <div class="flex justify-between"><dt class="muted">Bundle</dt><dd id="sSize">–</dd></div>
+        <div class="flex justify-between"><dt class="muted">Number</dt><dd id="sPhone">–</dd></div>
+        <div class="flex justify-between border-t border-[#263140] pt-2 text-base font-bold"><dt>Total</dt><dd id="sTotal">–</dd></div>
+      </dl>
+      <button id="pay" disabled class="mt-4 w-full rounded-lg py-3 font-bold bg-teal-300 text-[#06201c] disabled:opacity-40 disabled:cursor-not-allowed">Pay now</button>
+      <p id="msg" class="text-sm mt-3 hidden"></p>
+    </div>
+
+    <div class="panel p-4 hidden" id="result"></div>
+
+    <div class="panel p-4">
+      <h2 class="font-semibold mb-2">Delivery status</h2>
+      <a id="widgetLink" target="_blank" rel="noopener" class="text-sm muted underline">Open in a new tab</a>
+      <iframe id="widget" title="Delivery Progress" style="width:100%;min-height:360px;border:0" loading="lazy"></iframe>
+    </div>
+  </aside>
+</main>
+
+<main id="adminView" class="max-w-5xl mx-auto px-4 py-8 hidden">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-extrabold">Orders</h1>
+    <a href="#" class="text-sm muted hover:text-white">Back to shop</a>
+  </div>
+  <div id="adminGate" class="panel p-4 max-w-sm">
+    <label for="adminKey" class="font-semibold">Admin password</label>
+    <input id="adminKey" type="password" class="mt-2 w-full rounded-lg bg-[#0e1319] border border-[#263140] px-3 py-2">
+    <button id="adminGo" class="mt-3 rounded-lg px-4 py-2 font-bold bg-teal-300 text-[#06201c]">Show orders</button>
+    <p id="adminErr" class="text-sm text-red-400 mt-2 hidden">Wrong password.</p>
+  </div>
+  <div id="adminData" class="space-y-6 hidden"></div>
+</main>
+
+<script>
+const NET = {
+  mtn: ['MTN', '#ffcc00'], mtn_express: ['MTN Express', '#ff9f1a'],
+  telecel: ['Telecel', '#ff5c5c'], airteltigo: ['AirtelTigo', '#4da3ff'],
+};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = (n) => 'GHS ' + Number(n).toFixed(2);
+const phoneOk = (v) => /^0[235]\d{8}$/.test(v);
+let net = 'mtn', sel = null, busy = false;
+
+function renderTabs() {
+  $('tabs').innerHTML = Object.entries(NET).map(([k, [label, c]]) =>
+    `<button role="tab" data-n="${k}" aria-selected="${k === net}" class="panel px-3 py-3 text-sm font-semibold flex items-center gap-2 justify-center"
+      style="${k === net ? `border-color:${c};background:#1b2531` : ''}">
+      <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${c}"></span>${label}</button>`).join('');
+}
+$('tabs').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  net = b.dataset.n; sel = null; renderTabs(); loadPkgs(); update();
+};
+
+async function loadPkgs() {
+  const box = $('pkgs');
+  box.innerHTML = '<p class="muted text-sm col-span-full">Loading bundles…</p>';
+  const wu = `https://api.dataplug.store/api/delivery-progress-widget?network=${net}`;
+  $('widget').src = wu; $('widgetLink').href = wu;
+  const mine = net;
+  try {
+    const r = await fetch('/api/packages?network=' + mine);
+    const d = await r.json();
+    if (mine !== net) return;
+    if (!r.ok || !d.packages.length) throw new Error();
+    box.innerHTML = d.packages.map((p) =>
+      `<button data-gb="${p.size_gb}" data-price="${p.price}" class="pkg panel px-3 py-3 text-left hover:border-teal-300">
+        <div class="text-lg font-extrabold">${p.size_gb} GB</div><div class="muted text-sm">${money(p.price)}</div></button>`).join('');
+  } catch {
+    box.innerHTML = '<p class="text-sm text-red-400 col-span-full">Could not load bundles. Refresh to try again.</p>';
+  }
+}
+$('pkgs').onclick = (e) => {
+  const b = e.target.closest('.pkg'); if (!b) return;
+  sel = { gb: Number(b.dataset.gb), price: Number(b.dataset.price) };
+  document.querySelectorAll('.pkg').forEach((x) => x.style.borderColor = x === b ? '#5eead4' : '');
+  update();
+};
+$('phone').oninput = (e) => {
+  e.target.value = e.target.value.replace(/[^\d+]/g, '');
+  $('phoneErr').classList.toggle('hidden', !e.target.value || phoneOk(e.target.value));
+  update();
+};
+
+function update() {
+  const ph = $('phone').value;
+  $('sNet').textContent = NET[net][0];
+  $('sSize').textContent = sel ? sel.gb + ' GB' : '–';
+  $('sPhone').textContent = ph || '–';
+  $('sTotal').textContent = sel ? money(sel.price) : '–';
+  $('pay').disabled = busy || !sel || !phoneOk(ph);
+}
+function say(t, bad) {
+  const m = $('msg'); m.textContent = t; m.className = 'text-sm mt-3 ' + (bad ? 'text-red-400' : 'muted');
+}
+
+$('pay').onclick = async () => {
+  busy = true; update(); say('Starting secure payment…');
+  try {
+    const r = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ network: net, size_gb: sel.gb, phone: $('phone').value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Payment could not start');
+    new PaystackPop().resumeTransaction(d.access_code, {
+      onSuccess: () => { say('Payment received. Delivering your data…'); poll(d.reference); },
+      onCancel: () => { busy = false; update(); say('Payment cancelled. Your bundle was not charged.'); },
+      onError: () => { busy = false; update(); say('Payment failed. Try again.', true); },
+    });
+  } catch (e) { busy = false; update(); say(e.message, true); }
+};
+
+async function poll(ref, n = 0) {
+  try {
+    const o = await (await fetch('/api/order/' + ref)).json();
+    if (o.status && o.status !== 'awaiting_payment' && o.status !== 'processing') return showResult(o);
+  } catch {}
+  if (n > 40) return showResult({ status: 'processing', reference: ref });
+  setTimeout(() => poll(ref, n + 1), 2000);
+}
+
+function showResult(o) {
+  busy = false; update(); $('msg').classList.add('hidden');
+  const R = $('result'); R.classList.remove('hidden');
+  const head = {
+    completed: ['Data delivered', 'text-teal-300', `${o.size_gb} GB is on its way to ${esc(o.phone)}.`],
+    refunded: ['Payment refunded', 'text-amber-300', 'We could not deliver this bundle, so your payment was returned.'],
+    paid_unfulfilled: ['Delivery delayed', 'text-amber-300', 'We have your payment and will deliver or refund it shortly.'],
+    failed: ['Order failed', 'text-red-400', 'Something went wrong with this order. Contact support with the reference below.'],
+    processing: ['Still working', 'text-amber-300', 'Delivery is taking longer than usual. Keep the reference below.'],
+  }[o.status] || ['Order update', '', ''];
+  R.innerHTML = `<h2 class="font-extrabold text-lg ${head[1]}">${head[0]}</h2><p class="text-sm mt-1">${head[2]}</p>
+    <dl class="text-sm mt-3 space-y-1">
+      ${o.order_id ? `<div class="flex justify-between gap-2"><dt class="muted">Order ID</dt><dd class="break-all">${esc(o.order_id)}</dd></div>` : ''}
+      <div class="flex justify-between gap-2"><dt class="muted">Reference</dt><dd class="break-all">${esc(o.reference)}</dd></div></dl>`;
+}
+
+// ---- admin view ----
+const table = (title, rows, cols) => `<section><h2 class="font-semibold mb-2">${title} (${rows.length})</h2>
+  <div class="panel overflow-x-auto"><table class="w-full text-sm"><thead class="muted text-left"><tr>${cols.map((c) => `<th class="p-3">${c[0]}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map((r) => `<tr class="border-t border-[#263140]">${cols.map((c) => `<td class="p-3 whitespace-nowrap">${esc(c[1](r))}</td>`).join('')}</tr>`).join('') || '<tr><td class="p-3 muted">No orders yet.</td></tr>'}</tbody></table></div></section>`;
+
+async function loadAdmin(key) {
+  const r = await fetch('/api/admin/orders', { headers: { 'x-admin-key': key } });
+  if (!r.ok) { $('adminErr').classList.remove('hidden'); return; }
+  sessionStorage.setItem('ak', key);
+  const d = await r.json();
+  $('adminGate').classList.add('hidden');
+  const A = $('adminData'); A.classList.remove('hidden');
+  A.innerHTML =
+    table('Storefront orders', d.local, [
+      ['Time', (o) => new Date(o.createdAt).toLocaleString()], ['Network', (o) => o.network], ['Size', (o) => o.size_gb + ' GB'],
+      ['Phone', (o) => o.phone], ['Paid', (o) => money(o.price)], ['Status', (o) => o.status], ['DataPlug ID', (o) => o.order_id || ''], ['Note', (o) => o.error || '']]) +
+    table('DataPlug orders', d.dataplug, [
+      ['ID', (o) => o.order_id || o.id], ['Network', (o) => o.network], ['Size', (o) => o.size_gb], ['Phone', (o) => o.phone],
+      ['Amount', (o) => o.amount], ['Status', (o) => o.status]]);
+}
+$('adminGo').onclick = () => loadAdmin($('adminKey').value);
+
+function route() {
+  const adm = location.hash === '#admin';
+  $('shop').classList.toggle('hidden', adm); $('adminView').classList.toggle('hidden', !adm);
+  if (adm && sessionStorage.getItem('ak')) loadAdmin(sessionStorage.getItem('ak'));
+}
+window.addEventListener('hashchange', route);
+
+renderTabs(); loadPkgs(); update(); route();
+</script>
+</body>
+</html>

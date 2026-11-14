@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bundlebay
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: DATAPLUG_API_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MARKUP_PERCENT
+        value: "5"
+      - key: AUTO_REFUND
+        value: "false"
